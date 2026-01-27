@@ -1,0 +1,16 @@
+# Compiled files
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# Environment files
+.env
+appsettings.Development.json
