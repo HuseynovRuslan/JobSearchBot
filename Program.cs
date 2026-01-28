@@ -176,14 +176,14 @@ class Program
         if (string.IsNullOrEmpty(title)) return false;
 
         string[] keywords = {
-            "developer", "software", "backend", "frontend", "full-stack", "fullstack",
-            "programmer", "engineer", "web developer", "mobile developer",
-            ".net", "c#", "java", "python", "javascript", "typescript", "react", "angular", "vue",
-            "node", "php", "ruby", "golang", "swift", "kotlin", "flutter", "android", "ios",
-            "devops", "cloud", "aws", "azure", "docker", "kubernetes",
-            "sql", "database", "data engineer", "machine learning", "ai", "ml",
-            "proqramçı", "programçı", "proqramist", "mühəndis",
-            "it specialist", "it mütəxəssis", "sistem inzibatçısı", "system admin"
+            ".net developer", "backend developer", "software developer", "software engineer",
+            "c# developer", ".net engineer",
+            "c#", ".net", "asp.net", "asp.net core", "web api",
+            "entity framework", "ef core", "dapper", "linq", "signalr",
+            "sql", "mssql", "sql server", "postgresql", "t-sql",
+            "clean architecture", "onion architecture", "cqrs", "solid", "oop", "rest api",
+            "docker", "nginx", "git",
+            "proqramçı", "developer", "mühəndis", "bəkend", ".net mütəxəssisi"
         };
 
         string lowerTitle = title.ToLower();
