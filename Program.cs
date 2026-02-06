@@ -1,13 +1,24 @@
-﻿using HtmlAgilityPack;
-using Telegram.Bot;
+﻿using Telegram.Bot;
 using Telegram.Bot.Types.Enums;
-using System.Text.RegularExpressions;
+using JobSearchBot.Models;
+using JobSearchBot.Scrapers;
+using JobSearchBot.Filters;
 
 class Program
 {
     private static readonly string BotToken = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN") ?? "";
     private static readonly long ChatId = long.TryParse(Environment.GetEnvironmentVariable("TELEGRAM_CHAT_ID"), out var id) ? id : 0;
     private static readonly HashSet<string> _sentJobLinks = new HashSet<string>();
+    
+    // All scrapers
+    private static readonly List<IJobScraper> _scrapers = new List<IJobScraper>
+    {
+        new JobSearchScraper(),
+        new BusyScraper(),
+        new BossScraper(),
+        new SmartJobScraper(),
+        new AzJobScraper()
+    };
 
     static async Task Main(string[] args)
     {
@@ -24,15 +35,23 @@ class Program
         }
 
         var botClient = new TelegramBotClient(BotToken);
-        Console.WriteLine("🤖 Bot started... Monitoring JobSearch.az");
+        
+        Console.WriteLine("🤖 .NET Job Bot started...");
         Console.WriteLine($"📱 Chat ID: {ChatId}");
+        Console.WriteLine($"🌐 Monitoring {_scrapers.Count} job sites:");
+        foreach (var scraper in _scrapers)
+        {
+            Console.WriteLine($"   • {scraper.SourceName}");
+        }
         Console.WriteLine("⏰ Checking every 15 minutes.\n");
 
         try
         {
             await botClient.SendMessage(
                 chatId: ChatId,
-                text: "✅ *JobSearch Bot started!*\n\nMonitoring new programming job listings...",
+                text: "✅ *.NET Job Bot started!*\n\n" +
+                      "🔍 Monitoring for .NET/C# jobs from:\n" +
+                      string.Join("\n", _scrapers.Select(s => $"   • {s.SourceName}")),
                 parseMode: ParseMode.Markdown
             );
             Console.WriteLine("✅ Test message sent - Telegram connection successful!");
@@ -47,7 +66,7 @@ class Program
             return;
         }
 
-        await CheckForJobs(botClient, isFirstRun: true);
+        await CheckAllSitesForJobs(botClient, isFirstRun: true);
 
         while (true)
         {
@@ -55,7 +74,7 @@ class Program
 
             try
             {
-                await CheckForJobs(botClient, isFirstRun: false);
+                await CheckAllSitesForJobs(botClient, isFirstRun: false);
             }
             catch (Exception ex)
             {
@@ -64,100 +83,106 @@ class Program
         }
     }
 
-    private static async Task CheckForJobs(TelegramBotClient bot, bool isFirstRun)
+    private static async Task CheckAllSitesForJobs(TelegramBotClient bot, bool isFirstRun)
     {
-        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Checking for jobs...");
+        Console.WriteLine($"\n[{DateTime.Now:HH:mm:ss}] ═══════════════════════════════════════");
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Checking all job sites...");
 
-        string url = "https://jobsearch.az/vacancies";
-        var web = new HtmlWeb();
-        var doc = await Task.Run(() => web.Load(url));
+        int totalJobs = 0;
+        int dotNetJobs = 0;
+        int newJobsSent = 0;
 
-        var jobNodes = doc.DocumentNode.SelectNodes("//a[contains(@class, 'list__item')]");
-
-        if (jobNodes == null)
-        {
-            Console.WriteLine("⚠️ No jobs found. Site structure may have changed.");
-            return;
-        }
-
-        Console.WriteLine($"📋 Found {jobNodes.Count} jobs.");
-
-        int newJobsCount = 0;
-        int progJobsFound = 0;
-
-        foreach (var jobNode in jobNodes)
+        foreach (var scraper in _scrapers)
         {
             try
             {
-                string link = jobNode.Attributes["href"]?.Value ?? "";
-                if (string.IsNullOrEmpty(link)) continue;
-
-                if (!link.StartsWith("http"))
-                    link = "https://jobsearch.az" + link;
-
-                if (_sentJobLinks.Contains(link))
-                    continue;
-
-                string fullText = jobNode.InnerText.Trim();
-                fullText = Regex.Replace(fullText, @"\s+", " ").Trim();
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 🔍 Fetching from {scraper.SourceName}...");
                 
-                string title = fullText;
-                string company = "";
+                var jobs = await scraper.GetJobsAsync();
+                totalJobs += jobs.Count;
                 
-                var cleanedText = Regex.Replace(fullText, @"\b(Bu gün|Dünən|\d+[.,]?\d*K?)\b", "", RegexOptions.IgnoreCase).Trim();
-                cleanedText = Regex.Replace(cleanedText, @"\s+", " ").Trim();
-                
-                if (!string.IsNullOrEmpty(cleanedText))
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}]    Found {jobs.Count} jobs");
+
+                foreach (var job in jobs)
                 {
-                    title = cleanedText;
+                    // Skip if already sent
+                    if (_sentJobLinks.Contains(job.Link))
+                        continue;
+
+                    // Apply .NET filter
+                    if (!JobFilter.IsDotNetJob(job.Title))
+                        continue;
+
+                    dotNetJobs++;
+
+                    if (isFirstRun)
+                    {
+                        _sentJobLinks.Add(job.Link);
+                        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}]    📝 Cached: {job.Title}");
+                        continue;
+                    }
+
+                    // Send to Telegram
+                    string message = FormatJobMessage(job);
+                    
+                    await bot.SendMessage(
+                        chatId: ChatId,
+                        text: message,
+                        parseMode: ParseMode.Markdown,
+                        linkPreviewOptions: new Telegram.Bot.Types.LinkPreviewOptions { IsDisabled = true }
+                    );
+
+                    _sentJobLinks.Add(job.Link);
+                    newJobsSent++;
+                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}]    ✅ Sent: {job.Title}");
+
+                    // Delay to avoid rate limiting
+                    await Task.Delay(500);
                 }
-
-                if (!IsProgrammingJob(title))
-                    continue;
-
-                progJobsFound++;
-
-                if (isFirstRun)
-                {
-                    _sentJobLinks.Add(link);
-                    Console.WriteLine($"📝 Cached: {title}");
-                    continue;
-                }
-
-                string message = $"📢 *New Job Listing!*\n\n" +
-                                 $"💼 *{EscapeMarkdown(title)}*\n" +
-                                 $"🔗 [View Job]({link})";
-
-                await bot.SendMessage(
-                    chatId: ChatId,
-                    text: message,
-                    parseMode: ParseMode.Markdown
-                );
-
-                _sentJobLinks.Add(link);
-                newJobsCount++;
-                Console.WriteLine($"✅ Sent: {title}");
-
-                await Task.Delay(500);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"⚠️ Error processing job: {ex.Message}");
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] ❌ Error with {scraper.SourceName}: {ex.Message}");
             }
         }
 
-        if (!isFirstRun)
+        // Summary
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] ───────────────────────────────────────");
+        if (isFirstRun)
         {
-            if (newJobsCount > 0)
-                Console.WriteLine($"🎉 {newJobsCount} new programming job(s) sent!");
-            else
-                Console.WriteLine("ℹ️ No new programming jobs found.");
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 🚀 Initial run complete:");
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}]    Total jobs scanned: {totalJobs}");
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}]    .NET jobs cached: {dotNetJobs}");
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}]    Monitoring {_sentJobLinks.Count} total links");
         }
         else
         {
-            Console.WriteLine($"\n🚀 Initial run - {progJobsFound} programming job(s) cached.");
-            Console.WriteLine($"📊 Monitoring {_sentJobLinks.Count} total jobs.\n");
+            if (newJobsSent > 0)
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 🎉 {newJobsSent} new .NET job(s) sent!");
+            else
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] ℹ️ No new .NET jobs found.");
         }
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] ═══════════════════════════════════════\n");
+    }
+
+    private static string FormatJobMessage(JobListing job)
+    {
+        var lines = new List<string>
+        {
+            "📢 *Yeni İş Elanı!*",
+            "",
+            $"💼 *{EscapeMarkdown(job.Title)}*"
+        };
+
+        if (!string.IsNullOrEmpty(job.Company))
+        {
+            lines.Add($"🏢 {EscapeMarkdown(job.Company)}");
+        }
+
+        lines.Add($"📍 {job.Source}");
+        lines.Add($"🔗 [Elana bax]({job.Link})");
+
+        return string.Join("\n", lines);
     }
 
     private static string EscapeMarkdown(string text)
@@ -169,24 +194,5 @@ class Program
             .Replace("[", "\\[")
             .Replace("]", "\\]")
             .Replace("`", "\\`");
-    }
-
-    private static bool IsProgrammingJob(string title)
-    {
-        if (string.IsNullOrEmpty(title)) return false;
-
-        string[] keywords = {
-            ".net developer", "backend developer", "software developer", "software engineer",
-            "c# developer", ".net engineer",
-            "c#", ".net", "asp.net", "asp.net core", "web api",
-            "entity framework", "ef core", "dapper", "linq", "signalr",
-            "sql", "mssql", "sql server", "postgresql", "t-sql",
-            "clean architecture", "onion architecture", "cqrs", "solid", "oop", "rest api",
-            "docker", "nginx", "git",
-            "proqramçı", "developer", "mühəndis", "bəkend", ".net mütəxəssisi"
-        };
-
-        string lowerTitle = title.ToLower();
-        return keywords.Any(k => lowerTitle.Contains(k));
     }
 }
