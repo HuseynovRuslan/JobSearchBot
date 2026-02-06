@@ -17,7 +17,9 @@ class Program
         new BusyScraper(),
         new BossScraper(),
         new SmartJobScraper(),
-        new AzJobScraper()
+        new AzJobScraper(),
+        new GlorriScraper(),
+        new DjinniScraper()
     };
 
     static async Task Main(string[] args)

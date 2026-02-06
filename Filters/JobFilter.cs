@@ -2,7 +2,7 @@ namespace JobSearchBot.Filters;
 
 public static class JobFilter
 {
-    // ✅ QƏBUL OLUNAN açar sözlər (spesifik .NET/C#)
+    // ✅ QƏBUL OLUNAN açar sözlər (spesifik .NET/C# və digər vəzifələr)
     private static readonly string[] IncludeKeywords = {
         // .NET spesifik
         ".net", "dotnet", "asp.net", "c#", "csharp",
@@ -18,9 +18,18 @@ public static class JobFilter
         // ERP (yalnız texniki/developer)
         "erp developer", "erp programmer", "erp specialist",
         
-        // Azərbaycan dilində
+        // Azərbaycan dilində (proqramlaşdırma)
         "proqramçı", "bəkend", "proqram mühəndisi",
-        "backend mühəndis"
+        "backend mühəndis",
+        
+        // Yeni əlavə olunan vəzifələr
+        "motokuryer", "moto kuryer", "moped kuryer", "kurier", "kuryer",
+        "anbardar", "anbar işçisi", "warehouse", "anbar meneceri",
+        "ofis meneceri", "ofis menecer", "office manager", "ofis müdiri",
+        "stomatoloq assistenti", "diş həkimi köməkçisi", "dental assistant", "stomatoloji",
+        "operator", "məlumat daxil edən", "data entry", "daxiletmə operatoru", "call center operator",
+        "it texniki dəstək", "helpdesk", "help desk", "texniki dəstək", "it support", "technical support",
+        "kitab satıcısı", "kitab mağazası", "bookseller", "book seller", "satıcı"
     };
     
     // ❌ XARİC OLUNAN açar sözlər (qeyri-proqramlaşdırma mühəndisləri)
